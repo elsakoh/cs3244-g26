@@ -1,0 +1,13 @@
+features*
+labels*
+models
+models/*
+weights
+weights/*
+plots
+plots/*
+weights.h5
+flow_mean.mat
+*.csv
+.idea
+datasets
