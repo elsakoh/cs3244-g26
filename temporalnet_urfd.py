@@ -11,26 +11,22 @@ import cv2
 import glob
 import gc
 
-from keras.models import load_model, Model, Sequential
-from keras.layers import (Input, Conv2D, MaxPooling2D, Flatten,
-		 	  Activation, Dense, Dropout, ZeroPadding2D)
+from keras.models import load_model
 from keras.optimizers import Adam
-from keras.layers.normalization import BatchNormalization 
 from keras.callbacks import EarlyStopping, ModelCheckpoint
-from keras import backend as K
 from sklearn.metrics import confusion_matrix, accuracy_score
 from sklearn.model_selection import KFold, StratifiedShuffleSplit
-from keras.layers.advanced_activations import ELU
+from models import VGG16, lstm, mlp
 
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
 
 # CHANGE THESE VARIABLES ---
-data_folder = '/home/abhinav/Desktop/ML/Fall-Detection-with-CNNs-and-Optical-Flow/datasets/URFD_optical_flow'
+data_folder = '/home/abhinav/Desktop/ML/cs3244-g26/datasets/URFD_optical_flow'
 mean_file = 'flow_mean.mat'
 vgg_16_weights = 'weights.h5'
-save_features = False
-save_plots = True
+
+L = 10
 
 # Set to 'True' if you want to restore a previous trained models
 # Training is skipped and test is done
@@ -47,27 +43,7 @@ labels_file = saved_files_folder + 'labels_urfd_tf.h5'
 features_key = 'features'
 labels_key = 'labels'
 
-L = 10
-num_features = 4096
-batch_norm = True
-learning_rate = 0.0001
-mini_batch_size = 64
-weight_0 = 1
-epochs = 3000
-use_validation = True
-# After the training stops, use train+validation to train for 1 epoch
-use_val_for_training = True
-val_size = 100
-# Threshold to classify between positive and negative
-threshold = 0.5
 
-# Name of the experiment
-exp = 'urfd_lr{}_batchs{}_batchnorm{}_w0_{}'.format(
-    learning_rate,
-    mini_batch_size,
-    batch_norm,
-    weight_0
-)
 
 #import tensorflow as tf
 
@@ -146,8 +122,9 @@ def generator(list1, lits2):
 def saveFeatures(feature_extractor,
 		 features_file,
 		 labels_file,
-		 features_key, 
-		 labels_key):
+		 features_key,
+		 labels_key,
+        num_features):
     '''
     Function to load the optical flow stacks, do a feed-forward through the
 	 feature extractor (VGG16) and
@@ -253,6 +230,7 @@ def saveFeatures(feature_extractor,
     h5labels.close()
     
 def test_video(feature_extractor, video_path, ground_truth):
+    num_features=4096
     # Load the mean file to subtract to the images
     d = sio.loadmat(mean_file)
     flow_mean = d['image_mean']
@@ -289,52 +267,11 @@ def test_video(feature_extractor, video_path, ground_truth):
         truth[i] = ground_truth
     return predictions, truth
             
-def main():
-    # ========================================================================
-    # VGG-16 ARCHITECTURE
-    # ========================================================================
-    model = Sequential()
-    
-    model.add(ZeroPadding2D((1, 1), input_shape=(224, 224, 20)))
-    model.add(Conv2D(64, (3, 3), activation='relu', name='conv1_1'))
-    model.add(ZeroPadding2D((1, 1)))
-    model.add(Conv2D(64, (3, 3), activation='relu', name='conv1_2'))
-    model.add(MaxPooling2D((2, 2), strides=(2, 2)))
-
-    model.add(ZeroPadding2D((1, 1)))
-    model.add(Conv2D(128, (3, 3), activation='relu', name='conv2_1'))
-    model.add(ZeroPadding2D((1, 1)))
-    model.add(Conv2D(128, (3, 3), activation='relu', name='conv2_2'))
-    model.add(MaxPooling2D((2, 2), strides=(2, 2)))
-
-    model.add(ZeroPadding2D((1, 1)))
-    model.add(Conv2D(256, (3, 3), activation='relu', name='conv3_1'))
-    model.add(ZeroPadding2D((1, 1)))
-    model.add(Conv2D(256, (3, 3), activation='relu', name='conv3_2'))
-    model.add(ZeroPadding2D((1, 1)))
-    model.add(Conv2D(256, (3, 3), activation='relu', name='conv3_3'))
-    model.add(MaxPooling2D((2, 2), strides=(2, 2)))
-
-    model.add(ZeroPadding2D((1, 1)))
-    model.add(Conv2D(512, (3, 3), activation='relu', name='conv4_1'))
-    model.add(ZeroPadding2D((1, 1)))
-    model.add(Conv2D(512, (3, 3), activation='relu', name='conv4_2'))
-    model.add(ZeroPadding2D((1, 1)))
-    model.add(Conv2D(512, (3, 3), activation='relu', name='conv4_3'))
-    model.add(MaxPooling2D((2, 2), strides=(2, 2)))
-
-    model.add(ZeroPadding2D((1, 1)))
-    model.add(Conv2D(512, (3, 3), activation='relu', name='conv5_1'))
-    model.add(ZeroPadding2D((1, 1)))
-    model.add(Conv2D(512, (3, 3), activation='relu', name='conv5_2'))
-    model.add(ZeroPadding2D((1, 1)))
-    model.add(Conv2D(512, (3, 3), activation='relu', name='conv5_3'))
-    model.add(MaxPooling2D((2, 2), strides=(2, 2)))
-    
-    model.add(Flatten())
-    model.add(Dense(num_features, name='fc6',
-		    kernel_initializer='glorot_uniform'))
-    
+def train(use_validation=False, use_val_for_training = False, num_features=4096,
+          learning_rate=0.0001, epochs=3000, threshold=0.5, exp='', batch_norm=True,
+          mini_batch_size=64, save_plots=True, save_features=False, classification_method='MLP',
+          val_size=10, weight_0=1):
+    model = VGG16(num_features)
     # ========================================================================
     # WEIGHT INITIALIZATION
     # ========================================================================
@@ -365,18 +302,14 @@ def main():
     # FEATURE EXTRACTION
     # ========================================================================
     if save_features:
-        saveFeatures(model, features_file,
-		    labels_file, features_key,
-		    labels_key)
+        saveFeatures(model, features_file, labels_file, features_key, labels_key, num_features)
         
     # ========================================================================
     # TRAINING
     # ========================================================================  
 
-    adam = Adam(lr=learning_rate, beta_1=0.9, beta_2=0.999,
-		epsilon=1e-08)
-    model.compile(optimizer=adam, loss='categorical_crossentropy',
-		  metrics=['accuracy'])
+    adam = Adam(lr=learning_rate, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
+    model.compile(optimizer=adam, loss='categorical_crossentropy', metrics=['accuracy'])
   
     h5features = h5py.File(features_file, 'r')
     h5labels = h5py.File(labels_file, 'r')
@@ -483,33 +416,15 @@ def main():
         y_train = y_train[allin]
     
         # ==================== CLASSIFIER ========================
-        extracted_features = Input(shape=(num_features,),
-                    dtype='float32', name='input')
-        if batch_norm:
-            x = BatchNormalization(axis=-1, momentum=0.99,
-                    epsilon=0.001)(extracted_features)
-            x = Activation('relu')(x)
+        if classification_method == 'MLP':
+            classifier = mlp(num_features, batch_norm)
         else:
-            x = ELU(alpha=1.0)(extracted_features)
-        
-        x = Dropout(0.9)(x)
-        x = Dense(4096, name='fc2', kernel_initializer='glorot_uniform')(x)
-        if batch_norm:
-            x = BatchNormalization(axis=-1, momentum=0.99, epsilon=0.001)(x)
-            x = Activation('relu')(x)
-        else:
-            x = ELU(alpha=1.0)(x)
-        x = Dropout(0.8)(x)
-        x = Dense(1, name='predictions',
-                    kernel_initializer='glorot_uniform')(x)
-        x = Activation('sigmoid')(x)
-        
-        classifier = Model(input=extracted_features,
-                output=x, name='classifier')
+            X_train = np.reshape(X_train, (X_train.shape[0], 1, X_train.shape[1]))
+            classifier = lstm(seq_length=1, feature_length=num_features, nb_classes=2)
+
         fold_best_model_path = best_model_path + 'urfd_fold_{}.h5'.format(
                                 fold_number)
-        classifier.compile(optimizer=adam, loss='binary_crossentropy',
-                metrics=['accuracy'])
+        classifier.compile(optimizer=adam, loss='binary_crossentropy', metrics=['accuracy'])
 
         if not use_checkpoint:
             # ==================== TRAINING ========================     
@@ -628,6 +543,38 @@ def main():
                     np.std(mdrs)*100.))
     print("Accuracy: %.2f%% (+/- %.2f%%)" % (np.mean(accuracies)*100.,
                         np.std(accuracies)*100.))
+
+def main():
+    num_features = 4096
+    batch_norm = True
+    learning_rate = 0.0001
+    mini_batch_size = 64
+    weight_0 = 1
+    epochs = 3000
+    use_validation = True
+    save_features = False
+    save_plots = True
+    # After the training stops, use train+validation to train for 1 epoch
+    use_val_for_training = True
+    val_size = 100
+    # Threshold to classify between positive and negative
+    threshold = 0.5
+    # choose between MLP and LSTM for classification of features
+    classification_method = 'LSTM'
+    # Name of the experiment
+    exp = 'urfd_lr{}_batchs{}_batchnorm{}_w0_{}'.format(
+        learning_rate,
+        mini_batch_size,
+        batch_norm,
+        weight_0
+    )
+
+    if classification_method not in ['MLP', 'LSTM']:
+        raise ValueError("Invalid classification method!")
+
+    train(use_validation, use_val_for_training, num_features, learning_rate,
+          epochs, threshold, exp, batch_norm, mini_batch_size, save_plots,
+          save_features, classification_method, val_size, weight_0)
     
 if __name__ == '__main__':
     if not os.path.exists(best_model_path):

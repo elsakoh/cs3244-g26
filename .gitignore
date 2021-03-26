@@ -11,3 +11,5 @@ flow_mean.mat
 *.csv
 .idea
 datasets
+__pychache__/
+*.pyc
