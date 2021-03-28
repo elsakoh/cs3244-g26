@@ -26,28 +26,30 @@ adl_files = glob.glob(downloads_folder + data_folder + adl_folder + '*')
 fall_files = glob.glob(downloads_folder + data_folder + fall_folder + '*')
 
 # processing ADL files 
-# for video in adl_files: 
-#     cap = cv2.VideoCapture(video)
-#     length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-#     vidname = Path(video).stem + "/"
+for video in adl_files: 
+    cap = cv2.VideoCapture(video)
+    length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    vidname = Path(video).stem + "/"
     
-#     pos = 0
-#     while pos < length:
-#         ret, frame = cap.read()
-#         start = 5 * framespersecond
+    pos = 0
+    while pos < length:
+        ret, frame = cap.read()
+        start = 5 * framespersecond
         
-#         pos += 1
+        pos += 1
 
-#         output_path = ("./" + output_base_path + adl_folder + vidname)
-#         if not os.path.exists(output_path):
-#             os.makedirs(output_path)
-#         if pos > start:
-#             cv2.imwrite(output_path + 'img_{:05d}.jpg'.format(int(pos)),
-#                 cv2.resize(frame, (W,H)),
-#                 [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+        output_path = ("./" + output_base_path + adl_folder + vidname)
+        if not os.path.exists(output_path):
+            os.makedirs(output_path)
+        if pos > start:
+            cv2.imwrite(output_path + 'img_{:05d}.jpg'.format(int(pos)),
+                cv2.resize(frame, (W,H)),
+                [int(cv2.IMWRITE_JPEG_QUALITY), 95])
                 
-#     cap.release()
-#     cv2.destroyAllWindows()
+    cap.release()
+    cv2.destroyAllWindows()
+
+
 with open(annotation_file, 'r') as json_file:
     annotations = json.load(json_file)
 
