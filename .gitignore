@@ -11,3 +11,5 @@ flow_mean.mat
 *.csv
 .idea
 datasets
+SisFall_Videos
+SisFall_Videos/*
