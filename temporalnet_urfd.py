@@ -10,8 +10,9 @@ import scipy.io as sio
 import cv2
 import glob
 import gc
+import tensorflow as tf
 
-from keras.models import load_model
+#from keras.models import load_model
 from keras.optimizers import Adam
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from sklearn.metrics import confusion_matrix, accuracy_score
@@ -43,26 +44,37 @@ labels_file = saved_files_folder + 'labels_urfd_tf.h5'
 features_key = 'features'
 labels_key = 'labels'
 
+# test and activate GPU
+if tf.test.gpu_device_name():
+    print('Default GPU Device: {}'.format(tf.test.gpu_device_name()))
+else:
+    print("Please install GPU version of TF")
 
+print(tf.__version__)                         # -> 2.1.0
+print(tf.config.list_physical_devices('GPU')) # -> [PhysicalDevice(name='/physical_device:GPU:0', device_type='GPU')]
+print(tf.test.is_built_with_cuda())           # -> True
 
-#import tensorflow as tf
+gpus = tf.config.list_physical_devices('GPU')
+for gpu in gpus:
+    tf.config.experimental.set_memory_growth(gpu, True)
 
-#if tf.test.gpu_device_name():
-#    print('Default GPU Device: {}'.format(tf.test.gpu_device_name()))
-#else:
-#    print("Please install GPU version of TF")
-    
-#print(tf.__version__)                         # -> 2.1.0
-#print(tf.config.list_physical_devices('GPU')) # -> [PhysicalDevice(name='/physical_device:GPU:0', device_type='GPU')]
-#print(tf.test.is_built_with_cuda())           # -> True
+def sample_data(data, sample_size):
+    # Where b is the ndarray
+    # Get number of columns
+    number_of_rows = data[0].shape[1]
+    # Generate random column indexes
+    random_indices = np.random.choice(number_of_rows, size=sample_size, replace=False)
+    # Index the random cols
+    randomised_data = []
+    for d in data:
+        randomised_data.append(d[:, random_indices])
+    return randomised_data
 
-
-        
 def plot_training_info(case, metrics, save, history):
     '''
     Function to create plots for train and validation loss and accuracy
     Input:
-    * case: name for the plot, an 'accuracy.png' or 'loss.png' 
+    * case: name for the plot, an 'accuracy.png' or 'loss.png'
 	will be concatenated after the name.
     * metrics: list of metrics to store: 'loss' and/or 'accuracy'
     * save: boolean to store the plots or only show them.
@@ -72,14 +84,14 @@ def plot_training_info(case, metrics, save, history):
     if 'val_acc' in history and 'val_loss' in history:
         val = True
     plt.ioff()
-    if 'accuracy' in metrics:     
+    if 'accuracy' in metrics:
         fig = plt.figure()
         plt.plot(history['accuracy'])
         if val: plt.plot(history['val_acc'])
         plt.title('model accuracy')
         plt.ylabel('accuracy')
         plt.xlabel('epoch')
-        if val: 
+        if val:
             plt.legend(['train', 'val'], loc='upper left')
         else:
             plt.legend(['train'], loc='upper left')
@@ -100,7 +112,7 @@ def plot_training_info(case, metrics, save, history):
         plt.xlabel('epoch')
         #plt.ylim(1e-3, 1e-2)
         plt.yscale("log")
-        if val: 
+        if val:
             plt.legend(['train', 'val'], loc='upper left')
         else:
             plt.legend(['train'], loc='upper left')
@@ -110,15 +122,15 @@ def plot_training_info(case, metrics, save, history):
         else:
             plt.show()
         plt.close(fig)
- 
+
 def generator(list1, lits2):
     '''
     Auxiliar generator: returns the ith element of both given list with
-	 each call to next() 
+	 each call to next()
     '''
     for x,y in zip(list1,lits2):
         yield x, y
-          
+
 def saveFeatures(feature_extractor,
 		 features_file,
 		 labels_file,
@@ -128,7 +140,7 @@ def saveFeatures(feature_extractor,
     '''
     Function to load the optical flow stacks, do a feed-forward through the
 	 feature extractor (VGG16) and
-    store the output feature vectors in the file 'features_file' and the 
+    store the output feature vectors in the file 'features_file' and the
 	labels in 'labels_file'.
     Input:
     * feature_extractor: model VGG16 until the fc6 layer.
@@ -139,9 +151,9 @@ def saveFeatures(feature_extractor,
     * features_key: name of the key for the hdf5 file to store the features
     * labels_key: name of the key for the hdf5 file to store the labels
     '''
-    
+
     class0 = 'Falls'
-    class1 = 'NotFalls'     
+    class1 = 'NotFalls'
 
     # Load the mean file to subtract to the images
     d = sio.loadmat(mean_file)
@@ -149,7 +161,7 @@ def saveFeatures(feature_extractor,
 
     # Fill the folders and classes arrays with all the paths to the data
     folders, classes = [], []
-    fall_videos = [f for f in os.listdir(data_folder + class0) 
+    fall_videos = [f for f in os.listdir(data_folder + class0)
 			if os.path.isdir(os.path.join(data_folder + class0, f))]
     fall_videos.sort()
     for fall_video in fall_videos:
@@ -159,7 +171,7 @@ def saveFeatures(feature_extractor,
             folders.append(data_folder + class0 + '/' + fall_video)
             classes.append(0)
 
-    not_fall_videos = [f for f in os.listdir(data_folder + class1) 
+    not_fall_videos = [f for f in os.listdir(data_folder + class1)
 			if os.path.isdir(os.path.join(data_folder + class1, f))]
     not_fall_videos.sort()
     for not_fall_video in not_fall_videos:
@@ -174,7 +186,7 @@ def saveFeatures(feature_extractor,
     for folder in folders:
         x_images = glob.glob(folder + '/flow_x*.jpg')
         nb_total_stacks += len(x_images)-L+1
-    
+
     # File to store the extracted features and datasets to store them
     # IMPORTANT NOTE: 'w' mode totally erases previous data
     h5features = h5py.File(features_file,'w')
@@ -184,9 +196,9 @@ def saveFeatures(feature_extractor,
 			 dtype='float64')
     dataset_labels = h5labels.create_dataset(labels_key,
 			 shape=(nb_total_stacks, 1),
-			 dtype='float64')  
+			 dtype='float64')
     cont = 0
-    
+
     for folder, label in zip(folders, classes):
         x_images = glob.glob(folder + '/flow_x*.jpg')
         x_images.sort()
@@ -201,19 +213,19 @@ def saveFeatures(feature_extractor,
             img_x = cv2.imread(flow_x_file, cv2.IMREAD_GRAYSCALE)
             img_y = cv2.imread(flow_y_file, cv2.IMREAD_GRAYSCALE)
             # Assign an image i to the jth stack in the kth position, but also
-	    # in the j+1th stack in the k+1th position and so on	
-	    # (for sliding window) 
+	    # in the j+1th stack in the k+1th position and so on
+	    # (for sliding window)
             for s in list(reversed(range(min(10,i+1)))):
                 if i-s < nb_stacks:
                     flow[:,:,2*s,  i-s] = img_x
                     flow[:,:,2*s+1,i-s] = img_y
             del img_x,img_y
             gc.collect()
-            
+
         # Subtract mean
         flow = flow - np.tile(flow_mean[...,np.newaxis],
 			      (1, 1, 1, flow.shape[3]))
-        flow = np.transpose(flow, (3, 0, 1, 2)) 
+        flow = np.transpose(flow, (3, 0, 1, 2))
         predictions = np.zeros((flow.shape[0], num_features), dtype=np.float64)
         truth = np.zeros((flow.shape[0], 1), dtype=np.float64)
         # Process each stack: do the feed-forward pass and store
@@ -228,13 +240,13 @@ def saveFeatures(feature_extractor,
         cont += flow.shape[0]
     h5features.close()
     h5labels.close()
-    
+
 def test_video(feature_extractor, video_path, ground_truth):
     num_features=4096
     # Load the mean file to subtract to the images
     d = sio.loadmat(mean_file)
     flow_mean = d['image_mean']
-    
+
     x_images = glob.glob(video_path + '/flow_x*.jpg')
     x_images.sort()
     y_images = glob.glob(video_path + '/flow_y*.jpg')
@@ -249,7 +261,7 @@ def test_video(feature_extractor, video_path, ground_truth):
         img_y = cv2.imread(flow_y_file, cv2.IMREAD_GRAYSCALE)
         # Assign an image i to the jth stack in the kth position, but also
 	# in the j+1th stack in the k+1th position and so on
-	# (for sliding window) 
+	# (for sliding window)
         for s in list(reversed(range(min(10,i+1)))):
             if i-s < nb_stacks:
                 flow[:,:,2*s,  i-s] = img_x
@@ -257,7 +269,7 @@ def test_video(feature_extractor, video_path, ground_truth):
         del img_x,img_y
         gc.collect()
     flow = flow - np.tile(flow_mean[...,np.newaxis], (1, 1, 1, flow.shape[3]))
-    flow = np.transpose(flow, (3, 0, 1, 2)) 
+    flow = np.transpose(flow, (3, 0, 1, 2))
     predictions = np.zeros((flow.shape[0], num_features), dtype=np.float64)
     truth = np.zeros((flow.shape[0], 1), dtype=np.float64)
     # Process each stack: do the feed-forward pass
@@ -266,7 +278,7 @@ def test_video(feature_extractor, video_path, ground_truth):
         predictions[i, ...] = prediction
         truth[i] = ground_truth
     return predictions, truth
-            
+
 def train(use_validation=False, use_val_for_training = False, num_features=4096,
           learning_rate=0.0001, epochs=3000, threshold=0.5, exp='', batch_norm=True,
           mini_batch_size=64, save_plots=True, save_features=False, classification_method='MLP',
@@ -279,7 +291,7 @@ def train(use_validation=False, use_val_for_training = False, num_features=4096,
 		   'conv3_2', 'conv3_3', 'conv4_1', 'conv4_2', 'conv4_3',
 		   'conv5_1', 'conv5_2', 'conv5_3', 'fc6', 'fc7', 'fc8']
     h5 = h5py.File(vgg_16_weights, 'r')
-    
+
     layer_dict = dict([(layer.name, layer) for layer in model.layers])
 
     # Copy the weights stored in the 'vgg_16_weights' file to the
@@ -318,7 +330,7 @@ def train(use_validation=False, use_val_for_training = False, num_features=4096,
     # from optical flow images
     X_full = h5features[features_key]
     _y_full = np.asarray(h5labels[labels_key])
-    
+
     zeroes_full = np.asarray(np.where(_y_full==0)[0])
     ones_full = np.asarray(np.where(_y_full==1)[0])
     zeroes_full.sort()
@@ -366,7 +378,7 @@ def train(use_validation=False, use_val_for_training = False, num_features=4096,
         y_test = np.concatenate((
             _y_full[zeroes_full, ...][test_index_falls, ...],
             _y_full[ones_full, ...][test_index_nofalls, ...]
-        ))   
+        ))
 
         if use_validation:
             # Create a validation subset from the training set
@@ -400,7 +412,7 @@ def train(use_validation=False, use_val_for_training = False, num_features=4096,
         else:
             X_train = X
             y_train = _y
-    
+
         # Balance the number of positive and negative samples so that
         # there is the same amount of each of them
         all0 = np.asarray(np.where(y_train==0)[0])
@@ -419,8 +431,15 @@ def train(use_validation=False, use_val_for_training = False, num_features=4096,
         if classification_method == 'MLP':
             classifier = mlp(num_features, batch_norm)
         else:
+            new_feature_length = int(num_features / 4)
+            data = sample_data([X_train, X_test, X_val], new_feature_length)
+            X_train = data[0]
             X_train = np.reshape(X_train, (X_train.shape[0], 1, X_train.shape[1]))
-            classifier = lstm(seq_length=1, feature_length=num_features, nb_classes=2)
+            X_test = data[1]
+            X_test = np.reshape(X_test, (X_test.shape[0], 1, X_test.shape[1]))
+            X_val = data[2]
+            X_val = np.reshape(X_val, (X_val.shape[0], 1, X_val.shape[1]))
+            classifier = lstm(seq_length=1, feature_length=new_feature_length, nb_classes=1)
 
         fold_best_model_path = best_model_path + 'urfd_fold_{}.h5'.format(
                                 fold_number)
@@ -436,7 +455,7 @@ def train(use_validation=False, use_val_for_training = False, num_features=4096,
             if use_validation:
                 # callback definition
                 metric = 'val_loss'
-                e = EarlyStopping(monitor=metric, min_delta=0, patience=100,
+                e = EarlyStopping(monitor=metric, min_delta=0, patience=2,
                         mode='auto')
                 c = ModelCheckpoint(fold_best_model_path, monitor=metric,
                             save_best_only=True,
@@ -453,20 +472,20 @@ def train(use_validation=False, use_val_for_training = False, num_features=4096,
                 X_train, y_train, 
                 validation_data=validation_data,
                 batch_size=_mini_batch_size,
-                nb_epoch=epochs,
+                epochs=epochs,
                 shuffle=True,
                 class_weight=class_weight,
                 callbacks=callbacks
             )
 
-            if not use_validation:
-                classifier.save(fold_best_model_path)
+ #           if not use_validation:
+ #              classifier.save(fold_best_model_path)
 
             plot_training_info(plots_folder + exp, ['accuracy', 'loss'],
                     save_plots, history.history)
 
             if use_validation and use_val_for_training:
-                classifier = load_model(fold_best_model_path)
+                #classifier = load_model(fold_best_model_path)
 
                 # Use full training set (training+validation)
                 X_train = np.concatenate((X_train, X_val), axis=0)
@@ -487,8 +506,8 @@ def train(use_validation=False, use_val_for_training = False, num_features=4096,
         # ==================== EVALUATION ========================     
         
         # Load best model
-        print('Model loaded from checkpoint')
-        classifier = load_model(fold_best_model_path)
+        #print('Model loaded from checkpoint')
+        #classifier = load_model(fold_best_model_path)
 
         predicted = classifier.predict(np.asarray(X_test))
         for i in range(len(predicted)):
@@ -548,9 +567,9 @@ def main():
     num_features = 4096
     batch_norm = True
     learning_rate = 0.0001
-    mini_batch_size = 64
+    mini_batch_size = 16
     weight_0 = 1
-    epochs = 3000
+    epochs = 10
     use_validation = True
     save_features = False
     save_plots = True

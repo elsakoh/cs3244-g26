@@ -52,12 +52,12 @@ def VGG16(num_features=4096):
                     kernel_initializer='glorot_uniform'))
     return model
 
-def lstm(seq_length=40, feature_length=4096, nb_classes=2):
+def lstm(seq_length=40, feature_length=4096, nb_classes=1):
     """
     Build a simple LSTM network. We pass the extracted features from
     our CNN to this model predomenently.
 
-    nb_classes is set to 2 by default since its a binary classification problem.
+    nb_classes is set to 1 by default since its a binary classification problem.
     """
     input_shape = (1, feature_length)
     model = Sequential()
@@ -66,7 +66,7 @@ def lstm(seq_length=40, feature_length=4096, nb_classes=2):
                    dropout=0.5))
     model.add(Dense(512, activation='relu'))
     model.add(Dropout(0.5))
-    model.add(Dense(1, activation='softmax'))
+    model.add(Dense(1, activation='sigmoid'))
 
     return model
 
