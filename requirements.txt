@@ -135,3 +135,13 @@ yarl=1.6.3=py37h27cfd23_0
 zipp=3.4.1=pyhd3eb1b0_0
 zlib=1.2.11=h7b6447c_3
 zstd=1.4.5=h9ceee32_0
+
+opencv-python~=4.5.1.48
+numpy~=1.19.2
+matplotlib~=3.3.4
+h5py~=2.8.0
+scipy~=1.6.1
+keras~=2.3.1
+scikit-learn~=0.24.1
+tqdm~=4.59.0
+moviepy~=1.0.1
