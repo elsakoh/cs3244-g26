@@ -39,8 +39,7 @@ plots_folder = 'plots/'
 checkpoint_path = best_model_path + 'fold_'
 
 saved_files_folder = 'saved_features/'
-features_file = saved_files_folder + 'features_urfd_tf.h5'
-labels_file = saved_files_folder + 'labels_urfd_tf.h5'
+
 features_key = 'features'
 labels_key = 'labels'
 
@@ -138,112 +137,6 @@ def generatorSimple(list):
     '''
     for x in zip(list):
         yield x
-
-def saveFeaturesOtherDatasets(feature_extractor,
-		 features_file,
-		 labels_file,
-		 features_key,
-		 labels_key,
-        num_features):
-    '''
-    Function to load the optical flow stacks, do a feed-forward through the
-	 feature extractor (VGG16) and
-    store the output feature vectors in the file 'features_file' and the
-	labels in 'labels_file'.
-    Input:
-    * feature_extractor: model VGG16 until the fc6 layer.
-    * features_file: path to the hdf5 file where the extracted features are
-	 going to be stored
-    * labels_file: path to the hdf5 file where the labels of the features
-	 are going to be stored
-    * features_key: name of the key for the hdf5 file to store the features
-    * labels_key: name of the key for the hdf5 file to store the labels
-    '''
-
-    class0 = 'Falls'
-    class1 = 'NotFalls'
-
-    # Load the mean file to subtract to the images
-    d = sio.loadmat(mean_file)
-    flow_mean = d['image_mean']
-
-    # Fill the folders and classes arrays with all the paths to the data
-    folders, classes = [], []
-    fall_videos = [f for f in os.listdir(data_folder + class0)
-			if os.path.isdir(os.path.join(data_folder + class0, f))]
-    fall_videos.sort()
-    for fall_video in fall_videos:
-        images = glob.glob(data_folder + class0 + '/' + fall_video
-				 + '/flow_*.jpg')
-        if int(len(images)) >= 10:
-            folders.append(data_folder + class0 + '/' + fall_video)
-            classes.append(0)
-
-    not_fall_videos = [f for f in os.listdir(data_folder + class1)
-			if os.path.isdir(os.path.join(data_folder + class1, f))]
-    not_fall_videos.sort()
-    for not_fall_video in not_fall_videos:
-        images = glob.glob(data_folder + class1 + '/' + not_fall_video
-				 + '/flow_*.jpg')
-        if int(len(images)) >= 10:
-            folders.append(data_folder + class1 + '/' + not_fall_video)
-            classes.append(1)
-
-    # Total amount of stacks, with sliding window = num_images-L+1
-    nb_total_stacks = 0
-    for folder in folders:
-        images = glob.glob(folder + '/flow_*.jpg')
-        nb_total_stacks += len(images)-L+1
-
-    # File to store the extracted features and datasets to store them
-    # IMPORTANT NOTE: 'w' mode totally erases previous data
-    h5features = h5py.File(features_file,'w')
-    h5labels = h5py.File(labels_file,'w')
-    dataset_features = h5features.create_dataset(features_key,
-			 shape=(nb_total_stacks, num_features),
-			 dtype='float64')
-    dataset_labels = h5labels.create_dataset(labels_key,
-			 shape=(nb_total_stacks, 1),
-			 dtype='float64')
-    cont = 0
-
-    for folder, label in zip(folders, classes):
-        images = glob.glob(folder + '/flow_*.jpg')
-        images.sort()
-        nb_stacks = len(images)-L+1
-        # Here nb_stacks optical flow stacks will be stored
-        flow = np.zeros(shape=(224,224,2*L,nb_stacks), dtype=np.float64)
-        gen = generatorSimple(images)
-        for i in range(len(images)):
-            flow_file = gen.next()
-            img = cv2.imread(flow_file, cv2.IMREAD_GRAYSCALE)
-            # Assign an image i to the jth stack in the kth position, but also
-	    # in the j+1th stack in the k+1th position and so on
-	    # (for sliding window)
-            for s in list(reversed(range(min(10,i+1)))):
-                if i-s < nb_stacks:
-                    flow[:,:,2*s,  i-s] = img
-            del img
-            gc.collect()
-
-        # Subtract mean
-        flow = flow - np.tile(flow_mean[...,np.newaxis],
-			      (1, 1, 1, flow.shape[3]))
-        flow = np.transpose(flow, (3, 0, 1, 2))
-        predictions = np.zeros((flow.shape[0], num_features), dtype=np.float64)
-        truth = np.zeros((flow.shape[0], 1), dtype=np.float64)
-        # Process each stack: do the feed-forward pass and store
-	# in the hdf5 file the output
-        for i in range(flow.shape[0]):
-            prediction = feature_extractor.predict(
-					np.expand_dims(flow[i, ...],0))
-            predictions[i, ...] = prediction
-            truth[i] = label
-        dataset_features[cont:cont+flow.shape[0],:] = predictions
-        dataset_labels[cont:cont+flow.shape[0],:] = truth
-        cont += flow.shape[0]
-    h5features.close()
-    h5labels.close()
 
 def saveFeatures(feature_extractor,
 		 features_file,
@@ -393,11 +286,15 @@ def test_video(feature_extractor, video_path, ground_truth):
         truth[i] = ground_truth
     return predictions, truth
 
-def train(use_validation=False, use_val_for_training = False, num_features=4096,
+def train_VGG_classifier(use_validation=False, use_val_for_training = False, num_features=4096,
           learning_rate=0.0001, epochs=3000, threshold=0.5, exp='', batch_norm=True,
           mini_batch_size=64, save_plots=True, save_features=False, classification_method='MLP',
-          val_size=10, weight_0=1, dataset_type=0):
+          val_size=10, weight_0=1, dataset_name='', features_file='', labels_file=''):
+    # ========================================================================
+    # FETCH FEATURE EXTRACTOR
+    # ========================================================================
     model = VGG16(num_features)
+
     # ========================================================================
     # WEIGHT INITIALIZATION
     # ========================================================================
@@ -428,10 +325,7 @@ def train(use_validation=False, use_val_for_training = False, num_features=4096,
     # FEATURE EXTRACTION
     # ========================================================================
     if save_features:
-        if dataset_type == 0:
-            saveFeatures(model, features_file, labels_file, features_key, labels_key, num_features)
-        else:
-            saveFeaturesOtherDatasets(model, features_file, labels_file, features_key, labels_key, num_features)
+        saveFeatures(model, features_file, labels_file, features_key, labels_key, num_features)
 
     # ========================================================================
     # TRAINING
@@ -548,6 +442,7 @@ def train(use_validation=False, use_val_for_training = False, num_features=4096,
         if classification_method == 'MLP':
             classifier = mlp(num_features, batch_norm)
         else:
+            # TODO: handle case where validation is not done
             new_feature_length = int(num_features / 4)
             data = sample_data([X_train, X_test, X_val], new_feature_length)
             X_train = data[0]
@@ -558,8 +453,10 @@ def train(use_validation=False, use_val_for_training = False, num_features=4096,
             X_val = np.reshape(X_val, (X_val.shape[0], 1, X_val.shape[1]))
             classifier = lstm(seq_length=1, feature_length=new_feature_length, nb_classes=1)
 
-        fold_best_model_path = best_model_path + 'urfd_fold_{}.h5'.format(
-                                fold_number)
+        fold_best_model_path = best_model_path + '{}_fold_{}.h5'.format(
+            dataset_name,
+            fold_number
+        )
         classifier.compile(optimizer=adam, loss='binary_crossentropy', metrics=['accuracy'])
 
         if not use_checkpoint:
@@ -595,8 +492,8 @@ def train(use_validation=False, use_val_for_training = False, num_features=4096,
                 callbacks=callbacks
             )
 
- #           if not use_validation:
- #              classifier.save(fold_best_model_path)
+            #if not use_validation:
+            #   classifier.save(fold_best_model_path)
 
             plot_training_info(plots_folder + exp, ['accuracy', 'loss'],
                     save_plots, history.history)
@@ -621,7 +518,7 @@ def train(use_validation=False, use_val_for_training = False, num_features=4096,
                 classifier.save(fold_best_model_path)
 
         # ==================== EVALUATION ========================     
-        
+        # TODO: Load model as required
         # Load best model
         #print('Model loaded from checkpoint')
         #classifier = load_model(fold_best_model_path)
@@ -680,6 +577,16 @@ def train(use_validation=False, use_val_for_training = False, num_features=4096,
     print("Accuracy: %.2f%% (+/- %.2f%%)" % (np.mean(accuracies)*100.,
                         np.std(accuracies)*100.))
 
+def train_CNN_Inception_classifer():
+    """
+    TODO: CNN InceptionV3 Classifier
+    Before calling this method ensure that the following variable in main are configured.
+    - dataset_name: Whatever dataset you want to train on.
+    - parameters such as learning_rate, mini_batch_size
+    - is_original_model: False
+    """
+    pass
+
 def main():
     num_features = 4096
     batch_norm = True
@@ -697,10 +604,17 @@ def main():
     threshold = 0.5
     # choose between MLP and LSTM for classification of features
     classification_method = 'LSTM'
-    # dataset type, 0 for URFD and 1 for New Datasets (Sisfall, NTU etc)
-    dataset_type = 0
     # other values include sisfall, ntu etc
     dataset_name = 'urfd'
+    # h5 features
+    features_file = saved_files_folder + 'features_{}_tf.h5'.format(
+        dataset_name
+    )
+    labels_file = saved_files_folder + 'labels_{}_tf.h5'.format(
+        dataset_name
+    )
+    # choose between VGG + Classifier model or CNN Inception net
+    is_original_model = True
     # Name of the experiment
     exp = '{}_lr{}_batchs{}_batchnorm{}_w0_{}'.format(
         dataset_name,
@@ -713,9 +627,14 @@ def main():
     if classification_method not in ['MLP', 'LSTM']:
         raise ValueError("Invalid classification method!")
 
-    train(use_validation, use_val_for_training, num_features, learning_rate,
-          epochs, threshold, exp, batch_norm, mini_batch_size, save_plots,
-          save_features, classification_method, val_size, weight_0, dataset_type)
+    if is_original_model:
+        train_VGG_classifier(use_validation, use_val_for_training, num_features, learning_rate,
+            epochs, threshold, exp, batch_norm, mini_batch_size, save_plots,
+            save_features, classification_method, val_size, weight_0, dataset_name,
+            features_file, labels_file
+        )
+    else:
+        train_CNN_Inception_classifer()
     
 if __name__ == '__main__':
     if not os.path.exists(best_model_path):
