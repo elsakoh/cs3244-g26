@@ -27,8 +27,8 @@ def generate_OF(output_path, path_to_video):
             # hsv[...,2] = cv2.normalize(mag,None,0,255,cv2.NORM_MINMAX)
             # rgb = cv2.cvtColor(hsv,cv2.COLOR_HSV2BGR)
 
-            cv2.imshow('flow_x_img{:05d}.jpg'.format(counter), horz)
-            cv2.imshow('flow_y_img{:05d}.jpg'.format(counter), vert)
+            cv2.imshow('horizontal'.format(counter), horz)
+            cv2.imshow('vertical'.format(counter), vert)
 
             cv2.imwrite(output_path + "/" + 'flow_x_img{:05d}.jpg'.format(counter), horz)
             cv2.imwrite(output_path + "/" + 'flow_y_img{:05d}.jpg'.format(counter), vert)
