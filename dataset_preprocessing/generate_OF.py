@@ -17,20 +17,31 @@ def generate_OF(output_path, path_to_video):
 
             flow = cv2.calcOpticalFlowFarneback(prvs,next, None, 0.5, 3, 15, 3, 5, 1.2, 0)
 
-            mag, ang = cv2.cartToPolar(flow[...,0], flow[...,1])
-            hsv[...,0] = ang*180/np.pi/2
-            hsv[...,2] = cv2.normalize(mag,None,0,255,cv2.NORM_MINMAX)
-            rgb = cv2.cvtColor(hsv,cv2.COLOR_HSV2BGR)
+            horz = cv2.normalize(flow[...,0], None, 0, 255, cv2.NORM_MINMAX)     
+            vert = cv2.normalize(flow[...,1], None, 0, 255, cv2.NORM_MINMAX)
+            horz = horz.astype('uint8')
+            vert = vert.astype('uint8')
 
-            cv2.imshow('frame2',rgb)
-            cv2.imwrite(output_path + "/" + 'opticalfb_{:05d}.jpg'.format(counter),rgb)
+            # mag, ang = cv2.cartToPolar(flow[...,0], flow[...,1])
+            # hsv[...,0] = ang*180/np.pi/2
+            # hsv[...,2] = cv2.normalize(mag,None,0,255,cv2.NORM_MINMAX)
+            # rgb = cv2.cvtColor(hsv,cv2.COLOR_HSV2BGR)
+
+            cv2.imshow('flow_x_img{:05d}.jpg'.format(counter), horz)
+            cv2.imshow('flow_y_img{:05d}.jpg'.format(counter), vert)
+
+            cv2.imwrite(output_path + "/" + 'flow_x_img{:05d}.jpg'.format(counter), horz)
+            cv2.imwrite(output_path + "/" + 'flow_y_img{:05d}.jpg'.format(counter), vert)
+
+
+
+            # cv2.imwrite(output_path + "/" + 'opticalfb_{:05d}.jpg'.format(counter),rgb)
             k = cv2.waitKey(30) & 0xff
 
             if k == 27:
                 break
-            elif k == ord('s'):
-                cv2.imwrite(output_path + "/" + 'opticalfb_{:05d}.jpg'.format(counter),frame2)
-                cv2.imwrite(output_path + "/" + 'opticalhsv_{:05d}.jpg'.format(counter),rgb)
+            # elif k == ord('s'):
+                # cv2.imwrite(output_path + "/" + 'opticalhsv_{:05d}.jpg'.format(counter),rgb)
             prvs = next
             counter +=1
         else:
