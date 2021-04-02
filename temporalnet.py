@@ -22,11 +22,13 @@ from models import VGG16, lstm, mlp
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
 
+dirname = os.path.dirname(__file__)
 # CHANGE THESE VARIABLES ---
-data_folder = '/home/abhinav/Desktop/ML/cs3244-g26/datasets/URFD_optical_flow'
+data_folder = os.path.join(dirname, 'datasets/URFD_opticalflow/')
 mean_file = 'flow_mean.mat'
 vgg_16_weights = 'weights.h5'
 
+# sliding window variable
 L = 10
 
 # Set to 'True' if you want to restore a previous trained models
@@ -603,7 +605,7 @@ def main():
     # Threshold to classify between positive and negative
     threshold = 0.5
     # choose between MLP and LSTM for classification of features
-    classification_method = 'LSTM'
+    classification_method = 'MLP'
     # other values include sisfall, ntu etc
     dataset_name = 'urfd'
     # h5 features
