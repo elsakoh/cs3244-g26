@@ -11,3 +11,8 @@ flow_mean.mat
 *.csv
 .idea
 datasets
+SisFall_Videos
+SisFall_Videos/*
+SisFall_OF
+SisFall_OF/*
+dataset_preprocessing/__pycache__/
